@@ -1,0 +1,5 @@
+pageFrom		best			normal	 	 ftIndv	  	ftDL		ftPosMod
+
+0 - 440.+20		14-434.+20		0c			 1c			5c			0c
+		
+460 - 1740.+20	439c			12..972+15	 2..7c +1	7..322+5	1c
