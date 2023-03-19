@@ -17,3 +17,6 @@ venv.bak/
 
 # Idea project
 .idea/
+
+# Logs
+.log
