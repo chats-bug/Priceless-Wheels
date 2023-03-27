@@ -1,11 +1,7 @@
 import datetime
 import pandas as pd  # data processing, CSV file I/O
 
-from utils import Utility as cutil
-
-
-INDEX = "usedCarSkuId"
-
+from utils import INDEX, Utility as cutil
 
 class Cleaning:
     def __init__(self, filepath: str, index: str | None = None):

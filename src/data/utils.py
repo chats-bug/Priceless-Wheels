@@ -1,6 +1,7 @@
 import os
 import datetime
 
+INDEX = "usedCarSkuId"
 
 class Utility:
     # A utility function to get a number from a string
