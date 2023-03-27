@@ -501,9 +501,9 @@ class Cleaning:
 
     def hanlde_borex_stroke(self):
         self.df['Bore'] = self.df['BoreX Stroke'].str.split(
-            'x').str[0].apply(get_begin_float).astype(float)
+            'x').str[0].apply(cutil.get_begin_float).astype(float)
         self.df['Stroke'] = self.df['BoreX Stroke'].str.split(
-            'x').str[1].apply(get_begin_float).astype(float)
+            'x').str[1].apply(cutil.get_begin_float).astype(float)
         self.df.drop(columns=['BoreX Stroke'], inplace=True, axis=1)
         return
 
