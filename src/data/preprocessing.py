@@ -3,10 +3,16 @@ import os
 import numpy as np
 import pandas as pd
 
-from utils import INDEX, Utility as cutil
+from src.utils.constants import INDEX
+from src.utils.utils import Utility as cutil
 
 
 class Transformations:
+    """
+    This class contains all the recommended transformation functions for the dataset.
+    For a deeper dive into the transformations and visualizations, please refer to the notebooks 'Data Exploration I, II' in the notebooks directory.
+    """
+
     def myear_transformation(df: pd.DataFrame):
         """
         Remove all rows where the year is less than 2005
@@ -198,11 +204,6 @@ class Transformations:
         """
         df.drop('Stroke', axis=1, inplace=True)
         return
-
-
-class Missing_Values:
-    def __init__(self):
-        pass
 
 
 def main():

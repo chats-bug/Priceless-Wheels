@@ -1,7 +1,8 @@
 import datetime
 import pandas as pd  # data processing, CSV file I/O
 
-from utils import INDEX, Utility as cutil
+from src.utils.constants import INDEX
+from src.utils.utils import Utility as cutil
 
 class Cleaning:
     def __init__(self, filepath: str, index: str | None = None):
@@ -599,6 +600,9 @@ class Cleaning:
     def handle_km(self):
         self.df['km'] = self.df['km'].apply(
             cutil.get_begin_float).astype(float)
+        
+        # Convert to integer
+        self.df['km'] = self.df['km'].astype(int)
         return
 
     def rename_columns(self, renames: dict = None):
