@@ -2,6 +2,7 @@ import datetime
 import pandas as pd  # data processing, CSV file I/O
 
 from src.utils.constants import INDEX
+from src.utils.data_loader import DataLoader
 from src.utils.utils import Utility as cutil
 
 class Cleaning:
@@ -626,107 +627,113 @@ class Cleaning:
         return
 
 
+def run_cleaning_process(
+		filepath: str = None,
+	) -> str:
+	# The filepath was set as following:
+	# cardekho_cars_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv
+	# Get the latest file from the data folder
+	if filepath is None:
+		dl = DataLoader(dir_path='../../data/raw')
+		filepath = dl.get_latest_file(begins_with='cardekho_cars_')
+	index = INDEX
+    
+	# Create a new instance of the Cleaning class
+	cdc = Cleaning(filepath=filepath, index=index)
+
+	columns_to_keep = [
+		"loc",
+		"myear",
+		"bt",
+		"tt",
+		"ft",
+		"km",
+		"ip",
+		"images",
+		"imgCount",
+		"threesixty",
+		"dvn",
+		"oem",
+		"model",
+		"variantName",
+		"city_x",
+		"pu",
+		"discountValue",
+		"utype",
+		"carType",
+		"top_features",
+		"comfort_features",
+		"interior_features",
+		"exterior_features",
+		"safety_features",
+		"Color",
+		"Engine Type",
+		"Max Power",
+		"Max Torque",
+		"No of Cylinder",
+		"Values per Cylinder",
+		"Value Configuration",
+		"BoreX Stroke",
+		"Turbo Charger",
+		"Super Charger",
+		"Length",
+		"Width",
+		"Height",
+		"Wheel Base",
+		"Front Tread",
+		"Rear Tread",
+		"Kerb Weight",
+		"Gross Weight",
+		"Gear Box",
+		"Drive Type",
+		"Seating Capacity",
+		"Steering Type",
+		"Turning Radius",
+		"Front Brake Type",
+		"Rear Brake Type",
+		"Top Speed",
+		"Acceleration",
+		"Tyre Type",
+		"No Door Numbers",
+		"Cargo Volumn",
+		"model_type_new",
+		"state",
+		"owner_type",
+		"exterior_color",
+		"Fuel Suppy System",
+		"Compression Ratio",
+		"Alloy Wheel Size",
+		"Ground Clearance Unladen",
+	]
+
+	# Drop the columns that are not needed
+	cdc.drop_columns_except(columns_to_keep)
+
+	# Drop duplicate rows
+	cdc.drop_duplicates()
+
+	# Standardize the string columns
+	cdc.str_columns_to_lower()
+
+	# Get all the functions that start with 'handle_'
+	# and call them
+	handler_functions = [func for func in dir(cdc) if callable(
+		getattr(cdc, func)) and func.startswith('handle_')]
+	for func in handler_functions:
+		getattr(cdc, func)()
+
+	# Rename the columns
+	cdc.rename_columns()
+	file_path = f"../../data/cleaned/cars_cleaned_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+	# Save the cleaned data
+	cdc.save_data(file_path)
+	return file_path
+
+
 def main():
-    # The filepath was set as following:
-    # cardekho_cars_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv
-    # Get the latest file from the data folder
-    filepath = cutil.get_latest_file('cardekho_cars_', '../../data/raw')
-    index = INDEX
-
-    # Create a new instance of the Cleaning class
-    cdc = Cleaning(filepath=filepath, index=index)
-
-    columns_to_keep = [
-        "loc",
-        "myear",
-        "bt",
-        "tt",
-        "ft",
-        "km",
-        "ip",
-        "images",
-        "imgCount",
-        "threesixty",
-        "dvn",
-        "oem",
-        "model",
-        "variantName",
-        "city_x",
-        "pu",
-        "discountValue",
-        "utype",
-        "carType",
-        "top_features",
-        "comfort_features",
-        "interior_features",
-        "exterior_features",
-        "safety_features",
-        "Color",
-        "Engine Type",
-        "Max Power",
-        "Max Torque",
-        "No of Cylinder",
-        "Values per Cylinder",
-        "Value Configuration",
-        "BoreX Stroke",
-        "Turbo Charger",
-        "Super Charger",
-        "Length",
-        "Width",
-        "Height",
-        "Wheel Base",
-        "Front Tread",
-        "Rear Tread",
-        "Kerb Weight",
-        "Gross Weight",
-        "Gear Box",
-        "Drive Type",
-        "Seating Capacity",
-        "Steering Type",
-        "Turning Radius",
-        "Front Brake Type",
-        "Rear Brake Type",
-        "Top Speed",
-        "Acceleration",
-        "Tyre Type",
-        "No Door Numbers",
-        "Cargo Volumn",
-        "model_type_new",
-        "state",
-        "owner_type",
-        "exterior_color",
-        "Fuel Suppy System",
-        "Compression Ratio",
-        "Alloy Wheel Size",
-        "Ground Clearance Unladen",
-    ]
-
-    # Drop the columns that are not needed
-    cdc.drop_columns_except(columns_to_keep)
-
-    # Drop duplicate rows
-    cdc.drop_duplicates()
-
-    # Standardize the string columns
-    cdc.str_columns_to_lower()
-
-    # Get all the functions that start with 'handle_'
-    # and call them
-    hanlder_functions = [func for func in dir(cdc) if callable(
-        getattr(cdc, func)) and func.startswith('handle_')]
-    for func in hanlder_functions:
-        getattr(cdc, func)()
-
-    # Rename the columns
-    cdc.rename_columns()
-
-    # Save the cleaned data
-    cdc.save_data(
-        f"../../data/cleaned/cars_cleaned_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv")
-
-
-def run_cleaning_process():
-    main()
+    print('Cleaning the data...')
+    file_path = run_cleaning_process()
+    print(f'Cleaned data saved to {file_path}')
 
 
 if __name__ == '__main__':
