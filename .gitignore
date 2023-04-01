@@ -20,3 +20,6 @@ venv.bak/
 
 # Logs
 *.log
+
+# Test files
+tests/*.py
