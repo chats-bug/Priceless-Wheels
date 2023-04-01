@@ -2,24 +2,39 @@ from cmath import inf
 from dataclasses import dataclass
 
 import numpy as np
+from sklearn.base import BaseEstimator
+from sklearn.linear_model import BayesianRidge
+
 
 
 @dataclass
-class KNNImputationArguments:
+class MatchingImputerArguments:
+	strategy: str = 'mean' # The strategy to use for matching. Can be a str or any valid pandas aggregation function
+	columns: list[str] = None # The columns to match by. If None, all columns will be used
+	missing_values = [np.nan, 'nan'] # The missing values to impute
+	add_indicator: bool = True # Whether to add an indicator column or not
+	copy: bool = False # Whether to copy the dataset or impute in place
+	match_level: int = 0
+	match_level_array: list[int] = None
+
+
+
+@dataclass
+class KNNImputerArguments:
     n_neighbors: int = 5
     weights: str = 'uniform'
     metric: str = 'nan_euclidean'
     copy: bool = True
     add_indicator: bool = True
     missing_values = np.nan
-    n_jobs: int | None = None
     keep_empty_features: bool = False
     columns: list[str] = None
 
 
+
 @dataclass
-class IterativeImputationArguments:
-    estimator = None
+class IterativeImputerArguments:
+    estimator: BaseEstimator = BayesianRidge()
     sample_posterior: bool = False
     missing_values: int | float = np.nan
     initial_strategy: str = 'mean'
@@ -34,23 +49,5 @@ class IterativeImputationArguments:
     min_value = inf
     max_value = inf
     keep_empty_features = False
-    columns: list[str] = None
-
-
-@dataclass
-class SimpleImputerArguments:
-    strategy: str = 'mean'
-    fill_value = None
-    missing_values = np.nan
-    verbose: int = 0
     copy: bool = True
-    add_indicator: bool = True
-    keep_empty_features: bool = False
-
-
-imp = SimpleImputerArguments()
-# Convert to a dictionary
-imp_dict = imp.__dict__
-# Remove the columns key
-print(imp_dict.pop('columns') if 'columns' in imp_dict else None)
-print(imp_dict)
+    columns: list[str] = None # Drop this before passing to sklearn imputer

@@ -1,319 +1,656 @@
-import os
+from category_encoders import OneHotEncoder, TargetEncoder
 
 import numpy as np
-from src.utils import data_loader
-from src.utils.constants import INDEX, ImputationStragety
-from src.utils.imputation_stats import KNNImputationArguments, IterativeImputationArguments, SimpleImputerArguments
+from src.utils.constants import INDEX, ImputationStrategy, TARGET
+from src.utils.imputation_stats import KNNImputerArguments, IterativeImputerArguments, MatchingImputerArguments
 
 import pandas as pd
-from sklearn.base import BaseEstimator
-from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.impute import KNNImputer, IterativeImputer
+from sklearn.utils.validation import check_is_fitted
+
 
 PROCESSED_DIR_PATH = '../../data/processed/'
 
+class CustomMatchingImputer(BaseEstimator, TransformerMixin):
+	"""
+	A custom imputer which imputes missing values in a column by matching the closest value in another column manually.
+	- We aggregate the values in the target column by the columns specified in the match_by parameter. 
+	- We then find the closest match for each value in the target column.
+	- This imputer doesn't guarantee that all values in the target column will be imputed.
 
-class CustomImputer(BaseEstimator):
-    """
-    Custom imputer for missing values in the dataset. This imputer uses a combination of different imputation stratergies.
-    - We first look for the closest match in the dataset manually. If we find a match, we use the value of the closest match.
-    - If we don't find a match, we use one of the following
+	Parameters
+    ----------    
+    target : str
+        The name of the column to impute
+    imputer_arguments : MatchingImputer
+        The imputer_arguments to be used for imputation using KNNImputer
+    
+	Returns
+    -------
+    X : array-like
+        The array with imputed values in the target column
+	"""
+	def __init__(
+		self,
+		target: str,
+		imputer_arguments: MatchingImputerArguments = MatchingImputerArguments(columns=['model', 'variant']),
+	) -> None:
+		super().__init__()
+		assert isinstance(imputer_arguments, MatchingImputerArguments) == True, \
+		'Unrecognized value for imputer_arguments, should be MatchingImputer object'
+		assert type(target) == str, 'target should be a string' 
 
-    """
+		self.target = target
+		self.imputer_arguments = imputer_arguments
+		self.match_by = imputer_arguments.columns
+		self.strategy = imputer_arguments.strategy
+		self.missing_values = imputer_arguments.missing_values
+		self.add_indicator = imputer_arguments.add_indicator
+		self.copy = imputer_arguments.copy
+		self.match_level = imputer_arguments.match_level
+		self.match_level_array = np.array(imputer_arguments.match_level_array) or np.array(
+			[0] * self.match_level + [1] * (len(self.match_by) - self.match_level)
+		)
 
-    def __init__(self, stratergy: ImputationStragety = ImputationStragety.CUSTOM) -> None:
-        if stratergy not in ImputationStragety:
-            raise ValueError(f'Invalid imputation stratergy: {stratergy}')
-
-        super().__init__()
-        self.stratergy = stratergy
-
-    def fit(self, X: pd.DataFrame, y: pd.Series = None):
-        """
-        Fit the imputer on the dataset.
-        """
-        self.X = X
-        self.y = y
-        return self
+		assert self.match_level >= 0, 'match_level should be greater than or equal to 0'
+		assert self.match_level < len(self.match_by), 'match_level should be less than the number of columns in match_by'
+		assert len(self.match_by) == len(self.match_level_array), 'match_by and match_level_array should be of the same length'
+		assert np.all(np.isin(self.match_level_array, [0, 1])) and self.match_level_array.dtype == int, \
+			'match_level_array should be an array of integers with values 0 or 1'
 
 
-class ColumnWiseImputations:
-    """
-    This class contains functions which perform imputations on speicific columns in the dataset.
-    """
+	def fit(self, X: pd.DataFrame, y: pd.Series = None) -> 'CustomMatchingImputer':
+		"""
+		Fits the imputer on the dataset
 
-    def __init__(self, df: pd.DataFrame, match1: str = 'model', match2: str = 'variant') -> None:
-        self.df = df
-        self.match1 = match1
-        self.match2 = match2
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataset to fit the imputer on
+		y : pd.Series
+			The target column
 
-    def exact_car_match(self, column: str) -> pd.DataFrame:
-        """
-        Find the exact match for the given column in the dataset.
-        """
+		Returns
+		-------
+		self : CustomMatchingImputer
+			The fitted imputer
+		"""
+		self._validate_input(X)
+		self._validate_target(X, y)
 
-        missing_mask = self.df[column].isna()
-        missing_df = self.df[missing_mask]
 
-        # Get a list of unique model-variant combinations in the missing dataframe
-        unique_combinations = missing_df[[
-            self.match1, self.match2]].drop_duplicates()
+		self.match_by = self.match_by or X.columns.drop(self.target)
+		self.match_by = [col for col in self.match_by if col != self.target]
+		self.car_groups = X.groupby(self.match_by)[self.target].agg(self.strategy).reset_index(drop=False)
+		return self
+	
 
-        # Loop through the unique combinations and fill in the missing values
-        for model, variant in unique_combinations.itertuples(index=False):
-            # Find rows in the original dataframe that match the current model and variant
-            mask = (self.df[self.match1] == model) & (
-                self.df[self.match2] == variant) & (self.df[column].notnull())
-            matched_rows = self.df[mask]
-            if not matched_rows.empty:
-                # Fill in the missing value with the mean of the matched rows
-                mean = matched_rows[column].mean()
-                missing_mask = (missing_df[self.match1] == model) & (
-                    missing_df[self.match2] == variant)
-                missing_df.loc[missing_mask, column] = mean
+	def _get_closest_car_match(self, X: pd.Series) -> pd.Series:
+		"""
+		Parameters
+		----------
+		row : pd.Series
+			The row to impute
 
-        # Update the original dataframe with the imputed values
-        self.df.update(missing_df)
-        return self.df
+		Returns
+		-------
+		value : float
+			The value to impute
+		"""
+		# Get the closest match for the row
+		# If the value is missing, we try to find the closest match
+		# This is how we find a match:
+		# First we try to match every col in the self.match_by list to the row
+		# If we find a match, we use the value of the closest match
+		# If we don't find a match, we drop the last col in the self.match_by list and try again
+		# Repeat until we find a match or we run out of cols to match
+		# There is no guarantee that we will find a match
+		X = X.copy()
+		missing_rows = X[(X[self.target].isna()) | (X[self.target].isin(self.missing_values))]
+		for index, row in missing_rows.iterrows():
+			closest_match = np.nan
+			condition = True
+			for i, col in enumerate(self.match_by):
+				condition = condition & (self.car_groups[col] == row[col])
+				if self.match_level_array[i] == 1:
+					closest_match = self.car_groups[condition][self.target].agg(self.strategy)
+					if np.isnan(closest_match) or closest_match in self.missing_values:
+						continue
+					X.loc[index, self.target] = closest_match
 
-    def car_model_match(self, column: str) -> pd.DataFrame:
-        """
-        Find the closest match for the given column in the dataset.
-        """
+		return X
+	
 
-        missing_mask = self.df[column].isna()
-        missing_df = self.df[missing_mask]
+	def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+		"""
+		Transforms the dataset by imputing the missing values in the target column
 
-        # Get a list of unique model-variant combinations in the missing dataframe
-        unique_combinations = missing_df[[self.match1]].drop_duplicates()
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataset to transform
 
-        # Loop through the unique combinations and fill in the missing values
-        for model in unique_combinations.itertuples(index=False):
-            # Find rows in the original dataframe that match the current model and variant
-            mask = (self.df[self.match1] == model) & (
-                self.df[column].notnull())
-            matched_rows = self.df[mask]
-            if not matched_rows.empty:
-                # Fill in the missing value with the mean of the matched rows
-                mean = matched_rows[column].mean()
-                missing_mask = (missing_df[self.match1] == model)
-                missing_df.loc[missing_mask, column] = mean
+		Returns
+		-------
+		X : pd.DataFrame
+			The transformed dataset
+		"""
+		check_is_fitted(self, 'car_groups')
+		self._validate_input(X)
 
-        # Update the original dataframe with the imputed values
-        self.df.update(missing_df)
-        return self.df
+		# Copy the dataset if needed
+		if self.copy:
+			X = X.copy()
+		
+		# Add an indicator column if needed
+		if self.add_indicator:
+			X[f'{self.target}_imputed'] = X[self.target].isin(self.missing_values).astype(int)
+		# Impute the missing values in the target column
+		# X = X.apply(self._get_closest_car_match, axis=1)
+		X = self._get_closest_car_match(X)
+		return X
+	
 
-    def numerical_imputations(
-            self,
-            columns: list[str] = None,
-            stratergy: dict[str, ImputationStragety] = {
-                'all': ImputationStragety.KNN},
-            stratergy_kwargs: dict[str, object] = {
-                'all': KNNImputationArguments()},
-    ) -> pd.DataFrame:
-        """
-        Perform imputations on the given column.
-        """
-        # Get the numerical columns
-        numerical_columns = self.df.select_dtypes(
-            include=['int64', 'float64']).columns.tolist()
-        columns = columns or numerical_columns
+	def _validate_input(self, X: pd.DataFrame) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
 
-        # Check if the given columns are present in numerical columns
-        if set(columns) - set(numerical_columns):
-            raise ValueError(
-                f'Invalid columns: {set(columns) - set(numerical_columns)}')
+		Returns
+		-------
+		None
+		"""
+		if not isinstance(X, pd.DataFrame):
+			raise ValueError("X should be a pandas dataframe")
 
-        # First get the columns that have missing values
-        missing_columns = [
-            column for column in columns if self.df[column].isna().any()]
 
-        # Check if the stratergy is valid for the columns
-        for column in stratergy.keys():
-            if column not in columns and column != 'all':
-                raise ValueError(
-                    f'Invalid column: {column} for stratergy: {stratergy[column]}')
-            if stratergy[column] not in ImputationStragety:
-                raise ValueError(
-                    f'Invalid imputation stratergy: {stratergy[column]}')
+	def _validate_target(self, X: pd.DataFrame, y: pd.Series) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
 
-        # Check if the stratergy kwargs are valid for the columns
-        for column in stratergy_kwargs.keys():
-            if column not in columns and column != 'all':
-                raise ValueError(
-                    f'Invalid column: {column} for stratergy kwargs: {stratergy_kwargs[column]}')
+		Returns
+		-------
+		None
+		"""
+		if y is None:
+			if self.target is None:
+				raise ValueError("Target column name not provided")
+			y = X[self.target]
+		else:
+			self.target = y.name
+		if y.name not in X.columns:
+			raise ValueError(f"Target column {self.target} not found in dataframe")
+		
 
-            # Check if the stratergy kwargs are valid for the stratergy
-            match stratergy[column]:
-                case ImputationStragety.KNN:
-                    if not isinstance(stratergy_kwargs[column], KNNImputationArguments):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for KNN imputation: {stratergy_kwargs[column]}')
-                case ImputationStragety.MEAN, ImputationStragety.MEDIAN, ImputationStragety.MODE, ImputationStragety.CONSTANT:
-                    if not isinstance(stratergy_kwargs[column], SimpleImputerArguments):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for constant imputation: {stratergy_kwargs[column]}')
-                    if stratergy[column] == ImputationStragety.CONSTANT and (stratergy_kwargs[column].stratergy != 'constant' or stratergy_kwargs[column].fill_value is None):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for constant imputation: {stratergy_kwargs[column]}')
-                    elif stratergy[column] == ImputationStragety.MEAN and stratergy_kwargs[column].stratergy != 'mean':
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for mean imputation: {stratergy_kwargs[column]}')
-                    elif stratergy[column] == ImputationStragety.MEDIAN and stratergy_kwargs[column].stratergy != 'median':
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for median imputation: {stratergy_kwargs[column]}')
-                    elif stratergy[column] == ImputationStragety.MODE and stratergy_kwargs[column].stratergy != 'most_frequent':
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for mode imputation: {stratergy_kwargs[column]}')
 
-                case ImputationStragety.MICE:
-                    if not isinstance(stratergy_kwargs[column], IterativeImputationArguments):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for MICE imputation: {stratergy_kwargs[column]}')
+class CustomKNNImputer(BaseEstimator, TransformerMixin):
+	"""
+	Custom Simple Imputer class for imputing missing values in the dataset. This imputer works in the following way:
+	- We first look for the closest match in the dataset manually. If we find a match, we use the value of the closest match.
+    - If we don't find a match, we use a SimpleImputer with the strategy specified in the constructor.
+    
+     This has some extra features compared to the sklearn KNNImputer:
+    - We can specify a list of columns to group by. This is useful when we want to impute a column based on the values of other columns.
+    - We allow categorical columns to be imputed and used for imputation as well. This is done by label encoding the categorical columns and then imputing the numerical columns. After imputation, we reverse the label encoding to convert the columns back to categorical.
+    
+    Suggestions for improvement:
+    - If we want to use categorical columns for imputation, we should use a different strategy than label encoding. One-hot encoding is a good option.
+    - If the cardinality of the column is too high to use one-hot encoding, we can also use a target encoder.
+    - Make sure to standardize the numerical columns passing them to the imputer.
 
-        # Loop through the missing columns and perform imputations
-        for column in missing_columns:
-            # Step 1: Exact match imputations
-            self.df = self.exact_car_match(column)
-            # Step 2: Car model match imputations
-            self.df = self.car_model_match(column)
+	Parameters
+    ----------    
+    target : str
+        The name of the column to impute
+    imputer_arguments : KNNImputerArguments
+        The imputer_arguments to be used for replacement using KNNImputer
+	encoding : str
+		The encoding to use for categorical columns. Can be 'onehot' or 'label' or 'target' (not implemented yet)
+    
+	Returns
+    -------
+    X : array-like
+        The array with imputed values in the target column
+	"""
 
-            matched_stratergy = stratergy[column] if column in stratergy else stratergy['all']
-            matched_stratergy_kwargs = stratergy_kwargs[matched_stratergy].__dict__
-            columns_to_fit = matched_stratergy_kwargs.pop(
-                'columns') if 'columns' in matched_stratergy_kwargs else numerical_columns
+	def __init__(
+		self, 
+		target: str = None, 
+		imputer_arguments: KNNImputerArguments = KNNImputerArguments(),
+		encoding: str = 'onehot',
+	) -> None:
+		assert isinstance(imputer_arguments, KNNImputerArguments) == True, \
+		'Unrecognized value for imputer_arguments, should be SimpleImputerArguments object'
+		
+		super().__init__()
+		self.target = target
+		self.imputer_arguments = imputer_arguments.__dict__
+		self.imputer_arguments = self.imputer_arguments.copy()
+		self.group_cols = self.imputer_arguments.pop('columns')
+		if self.group_cols is not None and self.target in self.group_cols:
+			self.group_cols.remove(self.target)
+		self.encoding = encoding
+		self.encoders = {}
+		self.encoded_cols = []
 
-            # Get the strategy for imputing the missing values
-            match matched_stratergy:
-                case ImputationStragety.MEAN:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
+		self.copy = self.imputer_arguments['copy']
+		self.imputer_arguments['copy'] = False
 
-                case ImputationStragety.MEDIAN:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
 
-                case ImputationStragety.MODE:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
+	def fit(self, X: pd.DataFrame, y: pd.Series = None) -> 'CustomKNNImputer':
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to fit the imputer on
+		y : pd.Series
+			The target column to impute
 
-                case ImputationStragety.CONSTANT:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
+		Returns
+		-------
+		self : CustomKNNImputer
+			The fitted imputer
+		"""
+		self._validate_input(X)
+		self._validate_target(X, y)
 
-                case ImputationStragety.KNN:
-                    imputer = KNNImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[columns_to_fit].values.reshape(-1, 1))
+		X = X.copy()
 
-                case ImputationStragety.MICE:
-                    columns_to_use = stratergy_kwargs[column].columns or numerical_columns
-                    columns_to_use = columns_to_use.append(
-                        column) if column not in columns_to_use else columns_to_use
-                    imputer = IterativeImputer(**stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[columns_to_fit].values.reshape(-1, 1))
+		self.numerical_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+		self.group_cols = self.group_cols if self.group_cols else self.numerical_cols
+		if self.target not in self.group_cols:
+			self.group_cols.append(self.target)
 
-                case _:
-                    raise ValueError(
-                        f'Invalid imputation stratergy: {stratergy}')
+		# Encode the categorical columns
+		for col in self.group_cols:
+			if X[col].dtype.name in ['category', 'object']:
+				X = self._encode_column(X, col)
+		
+		self.group_cols.extend([self.target])
+		self.imputer = KNNImputer(**self.imputer_arguments)
+		self.imputer.fit(X[self.group_cols].values)
 
-        return self.df
+		return self
 
-    def categorical_imputations(
-            self,
-            columns: list[str] = None,
-            stratergy: dict[str, ImputationStragety] = {
-                'all': ImputationStragety.CONSTANT},
-            stratergy_kwargs: dict[str, object] = {
-                'all': SimpleImputerArguments(strategy='most_frequent', fill_value='missing')},
-    ) -> pd.DataFrame:
-        """
-        Perform imputations on the given categorical columns.
-        """
 
-        # Get the categorical columns
-        categorical_columns = self.df.select_dtypes(
-            include=['object']).columns.tolist()
-        columns = columns or categorical_columns
+	def _encode_column(self, X: pd.DataFrame, col: str) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to encode
+		col : str
+			The column to encode
 
-        # Check if the given columns are present in categorical columns
-        if set(columns) - set(categorical_columns):
-            raise ValueError(
-                f'Invalid columns: {set(columns) - set(categorical_columns)}')
+		Returns
+		-------
+		X : pd.DataFrame
+			The encoded dataframe
+		"""
+		X[col] = X[col].astype('category')
 
-        # First get the columns that have missing values
-        missing_columns = [
-            column for column in columns if self.df[column].isna().any()]
+		if self.encoding == 'label' or self.target == col:
+			if self.encoders.get(col) is None:
+				self.encoders[col] = LabelEncoder()
+				self.encoded_cols.append(col)
+			X[col] = self.encoders[col].fit_transform(X[col])
+		elif self.encoding == 'onehot':
+			if self.encoders.get(col) is None:
+				self.encoders[col] = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+				self.encoded_cols.append(col)
+			X[col] = self.encoders[col].fit_transform(X[col].values.reshape(-1, 1))
 
-        # Check if the stratergy is valid for the columns
-        for column in stratergy.keys():
-            if column not in columns and column != 'all':
-                raise ValueError(
-                    f'Invalid column in stratergy: {column}')
-            if stratergy[column] not in [ImputationStragety.MODE, ImputationStragety.CONSTANT]:
-                raise ValueError(
-                    f'Invalid imputation stratergy: {stratergy[column]}')
+		return X
 
-        # Check if the stratergy kwargs are valid for the columns
-        for column in stratergy_kwargs.keys():
-            if column not in columns and column != 'all':
-                raise ValueError(
-                    f'Invalid column in stratergy kwargs: {column}')
+	
+	def _decode_column(self, X: pd.DataFrame, col: str) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to decode
+		col : str
+			The column to decode
 
-            # Check if the stratergy kwargs are valid for the stratergy
-            match stratergy[column]:
-                case ImputationStragety.CONSTANT:
-                    if not isinstance(stratergy_kwargs[column], SimpleImputerArguments):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for constant imputation: {stratergy_kwargs[column]}')
-                    if stratergy_kwargs[column].stratergy != 'constant' or stratergy_kwargs[column].fill_value == None:
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for constant imputation: {stratergy_kwargs[column]}')
+		Returns
+		-------
+		X : pd.DataFrame
+			The decoded dataframe
+		"""
+		if col not in self.encoded_cols:
+			return X
+		
+		if self.encoding == 'target' or self.encoding == 'label' or col == self.target:
+			X[col] = self.encoders[col].inverse_transform(X[col].values.reshape(-1, 1))
+		elif self.encoding == 'onehot':
+			print(X.columns)
+			one_hot_cols = [c for c in X.columns if c.startswith(f'{col}_')]
+			print(f'{col} onehot columns : {one_hot_cols}')
+			t = self.encoders[col].inverse_transform(X[one_hot_cols])
+			print(f'{col} : {t.shape}')
+			print(f'{col} : {X[one_hot_cols].shape}')
+			# print(t)
+			X[col] = self.encoders[col].inverse_transform(X[one_hot_cols])
+			X = X.drop([col for col in X.columns if col.startswith(f'{col}_')], axis=1)
+		
+		return X
 
-                case ImputationStragety.MODE:
-                    if not isinstance(stratergy_kwargs[column], SimpleImputerArguments):
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for mode imputation: {stratergy_kwargs[column]}')
-                    if stratergy_kwargs[column].stratergy != 'most_frequent':
-                        raise ValueError(
-                            f'Invalid stratergy kwargs for mode imputation: {stratergy_kwargs[column]}')
 
-                case _:
-                    raise ValueError(
-                        f'Invalid imputation stratergy: {stratergy}')
+	def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to transform
 
-        # Loop through the missing columns and perform imputations
-        for column in missing_columns:
-            # Step 1: Exact match imputations
-            self.df = self.exact_car_match(column)
-            # Step 2: Car model match imputations
-            self.df = self.car_model_match(column)
+		Returns
+		-------
+		X : pd.DataFrame
+			The transformed dataframe
+		"""
+		self._validate_input(X)
 
-            matched_stratergy = stratergy[column] if column in stratergy else stratergy['all']
-            matched_stratergy_kwargs = stratergy_kwargs[matched_stratergy].__dict__
-            matched_stratergy_kwargs.pop('columns')
+		check_is_fitted(self, 'imputer')
 
-            # Get the strategy for imputing the missing values
-            match matched_stratergy:
-                case ImputationStragety.CONSTANT:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
-                case ImputationStragety.MODE:
-                    imputer = SimpleImputer(
-                        matched_stratergy_kwargs)
-                    self.df[column] = imputer.fit_transform(
-                        self.df[column].values.reshape(-1, 1))
-                case _:
-                    raise ValueError(
-                        f'Invalid imputation stratergy: {stratergy}')
+		if self.copy:
+			X = X.copy()
+
+		# print(f'{X.isna().sum()}')
+		# Encode categorical columns
+		for col in self.encoded_cols:
+			X = self._encode_column(X, col)
+		
+		# Impute missing values
+		self.imputer.transform(X[self.group_cols])
+
+		# Decode categorical columns
+		for col in self.encoded_cols:
+			X = self._decode_column(X, col)
+		
+		# print(f'{X.isna().sum()}')
+		return X
+	
+
+	def _validate_input(self, X: pd.DataFrame) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
+
+		Returns
+		-------
+		None
+		"""
+		if not isinstance(X, pd.DataFrame):
+			raise ValueError("X should be a pandas dataframe")
+
+
+	def _validate_target(self, X: pd.DataFrame, y: pd.Series) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
+
+		Returns
+		-------
+		None
+		"""
+		if y is None:
+			if self.target is None:
+				raise ValueError("Target column name not provided")
+			y = X[self.target]
+		else:
+			self.target = y.name
+		if y.name not in X.columns:
+			raise ValueError(f"Target column {self.target} not found in dataframe")
+
+
+
+class CustomIterativeImputer(BaseEstimator, TransformerMixin):
+	"""
+	Custom Simple Imputer class for imputing missing values in the dataset. This has some extra features compared to the sklearn IterativeImputer:
+    - We can specify a list of columns to group by. This is useful when we want to impute a column based on the values of other columns.
+    - We allow categorical columns to be imputed and used for imputation as well. This is done by label encoding the categorical columns and then imputing the numerical columns. After imputation, we reverse the label encoding to convert the columns back to categorical.
+    
+    Suggestions for improvement:
+    - If we want to use categorical columns for imputation, we should use a different strategy than label encoding. One-hot encoding is a good option.
+    - If the cardinality of the column is too high to use one-hot encoding, we can use a hashing trick to reduce the cardinality.
+    - Or if we are not comfortable with hashing, simply choose a non-linear estimator like a RandomForestRegressor to impute the missing values.
+
+	Parameters
+    ----------    
+    target : str
+        The name of the column to impute
+    imputer_arguments : IterativeImputerArguments
+        The imputer_arguments to be used for replacement using the IterativeImputer
+	encoding : str
+		The strategy to use for encoding the categorical columns. Can be 'label' or 'onehot'. Defaults to 'label'
+    
+	Returns
+    -------
+    X : array-like
+        The array with imputed values in the target column
+	"""
+	def __init__(
+			self, 
+			imputer_arguments: IterativeImputerArguments = IterativeImputerArguments(),
+			encoding: str = 'label',
+		):
+		assert isinstance(imputer_arguments, IterativeImputerArguments) == True, \
+		'Unrecognized value for imputer_arguments, should be IterativeImputerArguments object'
+		assert encoding in ['label', 'onehot'], 'encoding should be either label or onehot'
+
+		self.imputer_arguments = imputer_arguments.__dict__
+		self.group_cols = self.imputer_arguments.pop('columns')
+		self.copy = self.imputer_arguments.pop('copy')
+		self.add_indicator = self.imputer_arguments.pop('add_indicator')
+		
+		
+		self.encoding = encoding
+		self.encoders = {}
+		self.encoding_mappings = {}
+		self.scaler = StandardScaler()
+		
+	
+	def fit(self, X: pd.DataFrame, y: pd.Series = None) -> 'CustomIterativeImputer':
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to fit the imputer on
+		y : pd.Series
+			The target column
+
+		Returns
+		-------
+		self : CustomIterativeImputer
+			The fitted imputer
+		"""
+		self._validate_input(X)
+		self._validate_target(X, y)
+		
+		X = X.copy()
+
+		# Set the group columns to the columns specified in the imputer_arguments.
+		# If the group columns are not specified, we use all the numeric columns except the target column
+		self.group_cols = self.group_cols or [col for col in X.columns if X[col].dtype != 'object']
+
+		self.encoded_cols = []
+		for col in self.group_cols:
+			if col not in X.columns:
+				raise ValueError(f"Column {col} not found in dataframe")
+			
+			if X[col].dtype == 'object':
+				self.encoded_cols.append(col)
+				X = self._encode_column(X, col)
+
+		# Fit the scalar and transform the data
+		# Only fit and transform the group columns which are not one-hot encoded
+		if self.encoding == 'onehot':
+			non_encoded_cols = [col for col in self.group_cols if col not in self.encoded_cols]
+			self.scaler.fit(X[non_encoded_cols])
+			X[non_encoded_cols] = self.scaler.transform(X[non_encoded_cols])
+		else:
+			self.scaler.fit(X[self.group_cols])
+			X[self.group_cols] = self.scaler.transform(X[self.group_cols])
+
+		self.imputer = IterativeImputer(**self.imputer_arguments)
+		self.imputer.fit(X[self.group_cols])
+		return self
+	
+
+	def _encode_column(self, X: pd.DataFrame, col: str) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to encode
+		col : str
+			The column to encode
+
+		Returns
+		-------
+		X : pd.DataFrame
+			The encoded dataframe
+		"""
+		X[col] = X[col].astype('category')
+
+		if self.encoding == 'label':
+			if self.encoders.get(col) is None:
+				self.encoders[col] = LabelEncoder()
+			X[col] = self.encoders[col].fit_transform(X[col])
+		elif self.encoding == 'target':
+			if self.encoders.get(col) is None:
+				self.encoders[col] = TargetEncoder()
+			X[col] = self.encoders[col].fit_transform(X[col], TARGET)
+		elif self.encoding == 'onehot':
+			if self.encoders.get(col) is None:
+				self.encoders[col] = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+			X[col] = self.encoders[col].fit_transform(X[col].values.reshape(-1, 1))
+		return X
+
+	
+	def _decode_column(self, X: pd.DataFrame, col: str) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to decode
+		col : str
+			The column to decode
+
+		Returns
+		-------
+		X : pd.DataFrame
+			The decoded dataframe
+		"""
+		if col not in self.encoded_cols:
+			return X
+		
+		if self.encoding == 'label':
+			X[col] = self.encoders[col].inverse_transform(X[col].values.reshape(-1, 1))
+		elif self.encoding == 'onehot':
+			one_hot_cols = [c for c in X.columns if c.startswith(f'{col}_')]
+			X[col] = self.encoders[col].inverse_transform(X[one_hot_cols])
+			X = X.drop([col for col in X.columns if col.startswith(f'{col}_')], axis=1)
+		
+		return X
+
+	
+	def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to transform
+
+		Returns
+		-------
+		X : pd.DataFrame
+			The transformed dataframe
+		"""
+		self._validate_input(X)
+
+		# Make a copy if we are not allowed to modify the original dataframe
+		if self.copy:
+			X = X.copy()
+		
+		# Before we transform, we need to make sure that the categorical columns are encoded
+		# Encode the columns
+		for col in self.group_cols:
+			if col not in X.columns:
+				raise ValueError(f"Column {col} not found in dataframe")
+			
+			if X[col].dtype == 'object':
+				X = self._encode_column(X, col)
+
+		# Standardize the dataframe
+		# Only transform the group columns which are not one-hot encoded
+		if self.encoding == 'onehot':
+			non_encoded_cols = [col for col in self.group_cols if col not in self.encoded_cols]
+			X[non_encoded_cols] = self.scaler.transform(X[non_encoded_cols])
+		else:
+			X[self.group_cols] = self.scaler.transform(X[self.group_cols])
+
+		# Transform the dataframe
+		imputed = self.imputer.transform(X[self.group_cols])
+		X[self.group_cols] = imputed
+		
+		# De-standardize the dataframe
+		# Only transform the group columns which are not one-hot encoded
+		if self.encoding == 'onehot':
+			non_encoded_cols = [col for col in self.group_cols if col not in self.encoded_cols]
+			X[non_encoded_cols] = self.scaler.inverse_transform(X[non_encoded_cols])
+		else:
+			X[self.group_cols] = self.scaler.inverse_transform(X[self.group_cols])
+
+		# Decode the columns
+		for col in self.encoded_cols:
+			X = self._decode_column(X, col)
+		return X
+
+
+	def _validate_input(self, X: pd.DataFrame) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
+
+		Returns
+		-------
+		None
+		"""
+		if not isinstance(X, pd.DataFrame):
+			raise ValueError("X should be a pandas dataframe")
+
+
+	def _validate_target(self, X: pd.DataFrame, y: pd.Series) -> None:
+		"""
+		Parameters
+		----------
+		X : pd.DataFrame
+			The dataframe to validate
+
+		Returns
+		-------
+		None
+		"""
+		if y is None:
+			if self.target is None:
+				raise ValueError("Target column name not provided")
+			y = X[self.target]
+		else:
+			self.target = y.name
+		if y.name not in X.columns:
+			raise ValueError(f"Target column {self.target} not found in dataframe")
+	
+
