@@ -22,4 +22,5 @@ venv.bak/
 *.log
 
 # Test files
-tests/*.py
+test/*.py
+test/*.ipynb
