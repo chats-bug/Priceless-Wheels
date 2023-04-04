@@ -1,3 +1,8 @@
--- Requirements to run the scrapper
+-- Requirements to run the project
 pandas~=1.4.3
 httpx~=0.23.3
+numpy~=1.23.0
+scikit-learn~=1.2.2
+scipy~=1.10.1
+lightgbm~=3.3.5
+geopy~=2.3.0
