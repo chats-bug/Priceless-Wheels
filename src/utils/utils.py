@@ -3,9 +3,10 @@ import datetime
 
 
 class Utility:
-    
-    # A utility function to get a number from a string
-    def convert_to_number(x, conv: str = 'float'):
+    """
+    A utility class that contains all the utility functions.
+    """
+    def convert_to_number(x: str, conv: str = 'float'):
         x = str(x)
         new_str = ''
         is_dec = True
@@ -28,9 +29,10 @@ class Utility:
             return int(new_str)
 
         return float(new_str)
-
+    
     def get_begin_number(x):
-        return Utility.converst_to_number(x, 'int')
+        return Utility.convert_to_number(x, 'int')
 
     def get_begin_float(x):
-        return Utility.converst_to_number(x, 'float')
+        return Utility.convert_to_number(x, 'float')
+    
