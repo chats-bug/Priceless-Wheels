@@ -16,6 +16,7 @@ class Transformations:
 	For a deeper dive into the transformations and visualizations, please refer to the notebooks 'Data Exploration I, II' in the notebooks directory.
 	"""
 	
+	@staticmethod
 	def loc_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'loc' from the dataframe
@@ -23,6 +24,7 @@ class Transformations:
 		df.drop('loc', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def myear_transformation(df: pd.DataFrame):
 		"""
 		Remove all rows where the year is less than 2005
@@ -30,6 +32,7 @@ class Transformations:
 		df.drop(df[df['myear'] < 2005].index, inplace=True)
 		return df
 	
+	@staticmethod
 	def images_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'images' from the dataframe
@@ -37,6 +40,7 @@ class Transformations:
 		df.drop('images', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def imgCount_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'imgCount' from the dataframe
@@ -44,6 +48,7 @@ class Transformations:
 		df.drop('imgCount', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def threesixty_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'threesixty' from the dataframe
@@ -51,6 +56,7 @@ class Transformations:
 		df.drop('threesixty', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def dvn_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'dvn' from the dataframe
@@ -58,6 +64,7 @@ class Transformations:
 		df.drop('dvn', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def discountValue_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'discountValue' from the dataframe
@@ -65,6 +72,7 @@ class Transformations:
 		df.drop('discountValue', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def carType_transformation(df: pd.DataFrame):
 		"""
 		Drop the column 'carType' from the dataframe
@@ -72,6 +80,7 @@ class Transformations:
 		df.drop('carType', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def NumOfCylinder_transformation(df: pd.DataFrame):
 		"""
 		Replace the value of No of Cylinder with null if the car is electric
@@ -80,6 +89,7 @@ class Transformations:
 			df['No of Cylinder'].notnull()), 'No of Cylinder'] = np.nan
 		return
 	
+	@staticmethod
 	def Height_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Height' column
@@ -87,6 +97,7 @@ class Transformations:
 		df.drop('Height', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def Length_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Length' column
@@ -94,6 +105,7 @@ class Transformations:
 		df.drop('Length', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def RearTread_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Rear Tread' column
@@ -101,6 +113,7 @@ class Transformations:
 		df.drop('Rear Tread', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def GrossWeight_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Gross Weight' column
@@ -108,6 +121,7 @@ class Transformations:
 		df.drop('Gross Weight', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def Seats_transformation(df: pd.DataFrame):
 		"""
 		Replace the Seats with null if the value is zero
@@ -115,6 +129,7 @@ class Transformations:
 		df.loc[(df['Seats'] == 0), 'Seats'] = np.nan
 		return
 	
+	@staticmethod
 	def TurningRadius_transformation(df: pd.DataFrame):
 		"""
 		Replace the Turning Radius with null if the value is greater and 15
@@ -122,6 +137,7 @@ class Transformations:
 		df.loc[(df['Turning Radius'] > 15.0), 'Turning Radius'] = np.nan
 		return
 	
+	@staticmethod
 	def Doors_transformation(df: pd.DataFrame):
 		"""
 		Replace all rows having Doors=5 with Doors=4
@@ -129,6 +145,7 @@ class Transformations:
 		df.loc[(df['Doors'] == 5), 'Doors'] = 4
 		return
 	
+	@staticmethod
 	def model_type_new_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'model_type_new' column
@@ -136,6 +153,7 @@ class Transformations:
 		df.drop('model_type_new', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def exterior_color_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'exterior_color' column
@@ -143,6 +161,7 @@ class Transformations:
 		df.drop('exterior_color', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def GroundClearanceUnladen_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Ground Clearance Unladen' column
@@ -150,6 +169,7 @@ class Transformations:
 		df.drop('Ground Clearance Unladen', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def CompressionRatio_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Compression Ratio' column
@@ -157,6 +177,7 @@ class Transformations:
 		df.drop('Compression Ratio', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def AlloyWheelSize_transformation(df: pd.DataFrame):
 		"""
 		Replace the rows having Alloy Wheel Size=7 with null
@@ -164,6 +185,7 @@ class Transformations:
 		df.loc[(df['Alloy Wheel Size'] == 7), 'Alloy Wheel Size'] = np.nan
 		return
 	
+	@staticmethod
 	def MaxTorqueAt_transformation(df: pd.DataFrame):
 		"""
 		Mark all the rows having Max Torque At below 1000 and above 5000 as null
@@ -172,6 +194,7 @@ class Transformations:
 				df['Max Torque At'] > 5000), 'Max Torque At'] = np.nan
 		return
 	
+	@staticmethod
 	def Bore_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Bore' column
@@ -179,6 +202,7 @@ class Transformations:
 		df.drop('Bore', axis=1, inplace=True)
 		return
 	
+	@staticmethod
 	def Stroke_transformation(df: pd.DataFrame):
 		"""
 		Drop the 'Stroke' column
@@ -186,6 +210,15 @@ class Transformations:
 		df.drop('Stroke', axis=1, inplace=True)
 		return
 	
+	@staticmethod
+	def EngineType_transformation(df: pd.DataFrame):
+		"""
+		Drop the 'Engine Type' column
+		"""
+		df.drop('Engine Type', axis=1, inplace=True)
+		return
+	
+	@staticmethod
 	def TARGET_transformation(df: pd.DataFrame):
 		"""
 		Drop the cars where the price is greater than 2_00_00_000
@@ -204,6 +237,8 @@ def run_transformations(
 			dl = DataLoader(dir_path=CLEAN_DIR_PATH)
 			file_name = dl.get_latest_file(begins_with=CLEAN_FILE_BEGIN)
 			filepath = os.path.join(CLEAN_DIR_PATH, file_name)
+		
+		print(f"Reading file: {filepath}")
 		df = pd.read_csv(filepath, index_col=INDEX)
 	
 	# Get all the functions from the Transformations class
