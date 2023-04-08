@@ -75,6 +75,14 @@ class FeatureEngineeringTransformations(BaseEstimator, TransformerMixin):
 	
 	def fit(self, X: pd.DataFrame, y=None) -> 'FeatureEngineeringTransformations':
 		self.df = X.copy()
+		# Check if the target is present in the dataframe
+		if self.target not in self.df.columns:
+			# If not, y must be passed
+			if y is None:
+				raise Exception('Target column not found in the dataframe. Please pass y.')
+			else:
+				# If y is passed, add it to the dataframe
+				self.df[self.target] = y
 		self.feature_prices = self._car_object_feature_dict()
 		return self
 	
