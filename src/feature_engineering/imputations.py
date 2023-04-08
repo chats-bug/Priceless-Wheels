@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from category_encoders import OneHotEncoder, TargetEncoder
 
 import numpy as np
@@ -7,9 +9,9 @@ from src.utils.imputation_stats import KNNImputerArguments, IterativeImputerArgu
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
+from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import KNNImputer, IterativeImputer
 from sklearn.preprocessing import StandardScaler
-from sklearn.experimental import enable_iterative_imputer
 
 PROCESSED_DIR_PATH = '../../data/processed/'
 
@@ -36,13 +38,13 @@ class CustomMatchingImputer(BaseEstimator, TransformerMixin):
 	
 	def __init__(
 			self,
-			target: str,
+			target: str | None = None,
 			imputer_arguments: MatchingImputerArguments = MatchingImputerArguments(columns=['model', 'variant']),
 	) -> None:
 		super().__init__()
 		assert isinstance(imputer_arguments, MatchingImputerArguments) == True, \
 			'Unrecognized value for imputer_arguments, should be MatchingImputer object'
-		assert type(target) == str, 'target should be a string'
+		assert isinstance(target, str) or target is None, 'target should be a string or None'
 		
 		self.target = target
 		self.imputer_arguments = imputer_arguments
@@ -55,6 +57,7 @@ class CustomMatchingImputer(BaseEstimator, TransformerMixin):
 		self.match_level_array = np.array(imputer_arguments.match_level_array) or np.array(
 			[0] * self.match_level + [1] * (len(self.match_by) - self.match_level)
 		)
+		self.car_groups = None
 		
 		assert self.match_level >= 0, 'match_level should be greater than or equal to 0'
 		assert self.match_level < len(
@@ -81,24 +84,30 @@ class CustomMatchingImputer(BaseEstimator, TransformerMixin):
 			The fitted imputer
 		"""
 		self._validate_input(X)
-		# self._validate_target(X, y)
+		if self.target is None:
+			if y is None:
+				raise ValueError('target cannot be None if y is None')
+			else:
+				if self.target is None:
+					self.target = y.name.__str__()
+					X[self.target] = y
 		
 		self.match_by = self.match_by or X.columns.drop(self.target)
 		self.match_by = [col for col in self.match_by if col != self.target]
 		self.car_groups = X.groupby(self.match_by)[self.target].agg(self.strategy).reset_index(drop=False)
 		return self
 	
-	def _get_closest_car_match(self, X: pd.Series) -> pd.Series:
+	def _get_closest_car_match(self, X: pd.DataFrame) -> pd.Series:
 		"""
 		Parameters
 		----------
-		row : pd.Series
-			The row to impute
+		X : pd.DataFrame
+			The dataset to impute
 
 		Returns
 		-------
-		value : float
-			The value to impute
+		closest_match : pd.Series
+			The closest match for each row in the dataset
 		"""
 		# Get the closest match for the row
 		# If the value is missing, we try to find the closest match
@@ -408,27 +417,25 @@ class CustomKNNImputer(BaseEstimator, TransformerMixin):
 class CustomIterativeImputer(BaseEstimator, TransformerMixin):
 	"""
 	Custom Simple Imputer class for imputing missing values in the dataset. This has some extra features compared to the sklearn IterativeImputer:
-    - We can specify a list of columns to group by. This is useful when we want to impute a column based on the values of other columns.
-    - We allow categorical columns to be imputed and used for imputation as well. This is done by label encoding the categorical columns and then imputing the numerical columns. After imputation, we reverse the label encoding to convert the columns back to categorical.
-    
-    Suggestions for improvement:
-    - If we want to use categorical columns for imputation, we should use a different strategy than label encoding. One-hot encoding is a good option.
-    - If the cardinality of the column is too high to use one-hot encoding, we can use a hashing trick to reduce the cardinality.
-    - Or if we are not comfortable with hashing, simply choose a non-linear estimator like a RandomForestRegressor to impute the missing values.
-
+	- We can specify a list of columns to group by. This is useful when we want to impute a column based on the values of other columns.
+	- We allow categorical columns to be imputed and used for imputation as well. This is done by label encoding the categorical columns and then imputing the numerical columns. After imputation, we reverse the label encoding to convert the columns back to categorical.
+	
+	Suggestions for improvement:
+	- If we want to use categorical columns for imputation, we should use a different strategy than label encoding. One-hot encoding is a good option.
+	- If the cardinality of the column is too high to use one-hot encoding, we can use a hashing trick to reduce the cardinality.
+	- Or if we are not comfortable hashing, simply choose a non-linear estimator like a RandomForestRegressor to impute the missing values.
+	
 	Parameters
-    ----------    
-    target : str
-        The name of the column to impute
-    imputer_arguments : IterativeImputerArguments
-        The imputer_arguments to be used for replacement using the IterativeImputer
-	encoding : str
-		The strategy to use for encoding the categorical columns. Can be 'label' or 'onehot'. Defaults to 'label'
-    
+	----------
+		imputer_arguments : IterativeImputerArguments
+			The imputer_arguments to be used for replacement using the IterativeImputer
+		encoding : str
+			The strategy to use for encoding the categorical columns. Can be 'label' or 'onehot'. Defaults to 'label'
+	
 	Returns
-    -------
-    X : array-like
-        The array with imputed values in the target column
+	-------
+		X : array-like
+			The array with imputed values in the target column
 	"""
 	
 	def __init__(

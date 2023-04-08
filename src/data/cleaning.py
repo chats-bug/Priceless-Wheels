@@ -588,9 +588,9 @@ class Cleaning:
             cutil.get_begin_float).astype(float)
         return
     
-    def hanlde_cargo_volume(self):
-        self.df['Cargo Volume'] = self.df['Cargo Volume'].apply(
-            cutil.get_begin_number).astype(float)
+    def handle_cargo_volumn(self):
+        self.df['Cargo Volumn'] = self.df['Cargo Volumn'].apply(
+            cutil.get_begin_float).astype(float)
         return
     
     def handle_ground_clearance_unladen(self):

@@ -30,9 +30,14 @@ class Utility:
 
         return float(new_str)
     
-    def get_begin_number(x):
+    @staticmethod
+    def get_begin_number(x: str):
         return Utility.convert_to_number(x, 'int')
 
-    def get_begin_float(x):
+    @staticmethod
+    def get_begin_float(x: str):
         return Utility.convert_to_number(x, 'float')
     
+
+if __name__ == "__main__":
+    print(Utility.get_begin_number('120-litres'))
