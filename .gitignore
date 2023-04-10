@@ -7,11 +7,11 @@ __pycache__/
 .env
 .venv
 env/
+env*/
 venv/
 ENV/
 env.bak/
 venv.bak/
-carsapi
 
 # Vscode project
 .vscode/
