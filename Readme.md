@@ -14,10 +14,10 @@ Welcome to Priceless Wheels! In this project, our goal is to build a model that 
 
 ## Roadmap
 - [x] Data Collection
-- [ ] Data Cleaning and Preprocessing
-- [ ] Exploratory Data Analysis
-- [ ] Feature Engineering
-- [ ] Model Building
-- [ ] Hyperparameter Tuning
+- [x] Data Cleaning and Preprocessing
+- [x] Exploratory Data Analysis
+- [x] Feature Engineering
+- [x] Model Building
+- [x] Hyperparameter Tuning
 - [ ] Model Evaluation
 - [ ] Deployment
