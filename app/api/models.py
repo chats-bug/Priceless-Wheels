@@ -1,14 +1,14 @@
 import os
 import uuid
-from typing import Optional, Type, get_type_hints
+from typing import Optional, Type, get_type_hints, List
 
 import pandas as pd
 from pydantic import BaseModel, Field
 
 
 def make_optional(
-		include: Optional[list[str]] = None,
-		exclude: Optional[list[str]] = None,
+		include: Optional[List[str]] = None,
+		exclude: Optional[List[str]] = None,
 ):
 	"""Return a decorator to make model fields optional"""
 	
