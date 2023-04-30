@@ -66,4 +66,34 @@ async def predict(
 	
 	# Return the predictions
 	return {"predictions": avg_pred.tolist()}
+
+
+@app.post("/predict_without_catboost")
+async def predict(
+		# The data will be in the body of the request
+		car_details: CarDetailsModel = Body(...)
+):
+	print('Converting the class to a dataframe')
+	# Convert the model to a dataframe
+	car_details = pd.DataFrame([car_details.dict(by_alias=True)]).reset_index(drop=True)
+	# Replace the empty strings with NaN
+	car_details.replace('', 'nan', inplace=True)
+	# print(car_details)
 	
+	# Load the model
+	lightgbm_pipe = joblib.load('../../data/models/lightgbm_pipeline_2023-04-08_20-03-50.pkl')
+	
+	print('Predicting the price on - ')
+	# Predict
+	print('1. LightGBM')
+	lightgbm_pred = np.exp(lightgbm_pipe.predict(car_details))
+	
+	print('Averaging the predictions')
+	# Average the predictions
+	avg_pred = lightgbm_pred
+	# Round the predictions to the nearest multiple of 1000
+	avg_pred = np.round(avg_pred / 1000) * 1000
+	print('Done')
+	
+	# Return the predictions
+	return {"predictions": avg_pred.tolist()}
