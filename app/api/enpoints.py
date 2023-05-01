@@ -6,12 +6,18 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Body
+from fastapi.middleware.cors import CORSMiddleware
 from models import CarDetailsModel
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 parent_dir_path = os.path.abspath(os.path.join(dir_path, os.pardir, os.pardir))
 sys.path.insert(0, parent_dir_path)
+
 app = FastAPI()
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=["*"],
+)
 
 
 @app.get("/")
@@ -20,7 +26,8 @@ async def hello():
 		"message": "Welcome to Priceless Wheels API",
 		"endpoints": {
 			"/predict": "POST endpoint to predict the price of a car",
-			"/sample": "GET endpoint to get a sample request body"
+			"/predict_without_catboost": "POST endpoint to predict the price of a car without using CatBoost",
+			"/sample": "GET endpoint to get a sample request body",
 		},
 	}
 
