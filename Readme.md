@@ -1,5 +1,5 @@
 # Welcome to Pricing Wheels! 
-**A modern used car price prediction tool. Check out the live demo [here](https://priceless-wheels-frontend.vercel.app/)**
+**A modern used car price prediction tool. Check out the website [here](https://priceless-wheels-frontend.vercel.app/)**
 <br>
 
 Here's a sneak peek of the landing page &cudarrr;
@@ -67,5 +67,5 @@ The model achieved a mean average error (MAE) of INR 76,000, and a MAPE of ~10.2
 - [x] Feature Engineering
 - [x] Model Building
 - [x] Hyperparameter Tuning
-- [ ] Model Evaluation
-- [ ] Deployment
+- [x] Model Evaluation
+- [x] Deployment
