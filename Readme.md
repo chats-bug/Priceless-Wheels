@@ -1,9 +1,24 @@
 # Welcome to Pricing Wheels! 
-*A simple used car price prediction tool*
+**A modern used car price prediction tool. Check out the live demo [here](https://priceless-wheels-frontend.vercel.app/)**
+<br>
+
+Here's a sneak peek of the landing page &cudarrr;
+![Landing Page](./public/images/landing-page.png)
+Just enter the details of the car you want to sell and get the predicted price like this &cudarrr;
+![Predictions](./public/images/prediction.png)
+
 
 ## Table of Contents
-1. [Introduction](#introduction)
-2. [Roadmap](#roadmap)
+- [Welcome to Pricing Wheels!](#welcome-to-pricing-wheels)
+	- [Table of Contents](#table-of-contents)
+	- [Introduction](#introduction)
+	- [Dataset](#dataset)
+	- [Installation and Dependencies](#installation-and-dependencies)
+	- [Usage](#usage)
+	- [Model](#model)
+	- [Hyperparameter Tuning](#hyperparameter-tuning)
+	- [Results](#results)
+	- [Roadmap](#roadmap)
 
 
 ## Introduction
