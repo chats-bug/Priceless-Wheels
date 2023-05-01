@@ -14,9 +14,17 @@ parent_dir_path = os.path.abspath(os.path.join(dir_path, os.pardir, os.pardir))
 sys.path.insert(0, parent_dir_path)
 
 app = FastAPI()
+origins = [
+	"http://localhost",
+	"http://localhost:3000",
+]
+
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["*"],
+	allow_origins=origins,
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
 )
 
 
